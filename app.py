@@ -93,7 +93,12 @@ def send_daily_reminder(user_id):
             logger.warning(f"找不到用戶 {user_id} 的資料")
             return
             
-        result = get_commute_info(data['origin'], data['destination'], data['arrival_time'])
+        result = get_commute_info(
+            data['origin'],
+            data['destination'],
+            data['arrival_time'],
+            data['mode']
+        )
         if "error" in result:
             msg = f"🚨 通勤查詢失敗: {result['error']}"
         else:
