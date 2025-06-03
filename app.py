@@ -129,17 +129,31 @@ def get_commute_info(origin, destination, arrival_time_str, mode):
         'destinations': destination,
         'mode': mode,
         'key': GOOGLE_API_KEY,
-        'language': 'zh-TW'
+        'language': 'zh-TW',
+        'departure_time': 'now' if mode != 'transit' else None  # 預設使用當前時間
     }
+
+    # 大眾運輸需指定 arrival_time，其他模式需計算出發時間
     if mode == 'transit':
         params['arrival_time'] = arrival_timestamp
+    else:
+        # 若用戶希望指定抵達時間，需反向計算出發時間
+        params['departure_time'] = arrival_timestamp  # 此處需調整邏輯
 
     response = requests.get(url, params=params).json()
     try:
         element = response['rows'][0]['elements'][0]
-        duration_sec = element['duration']['value']
+        
+        # 開車模式優先使用 duration_in_traffic
+        if mode == 'driving' and 'duration_in_traffic' in element:
+            duration_sec = element['duration_in_traffic']['value']
+        else:
+            duration_sec = element['duration']['value']
+            
         duration_text = element['duration']['text']
-        best_departure_time = arrival_timestamp - duration_sec if mode == 'transit' else int(time.time())
+        
+        # 計算建議出發時間（適用所有模式）
+        best_departure_time = arrival_timestamp - duration_sec
         best_departure_str = time.strftime("%H:%M", time.localtime(best_departure_time))
 
         return {
