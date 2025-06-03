@@ -102,14 +102,54 @@ def handle_message(event):
         reply = "請輸入每日提醒時間（例如 07:00）"
     
     elif state == 'awaiting_remind':
-        user_data[user_id]['remind_time'] = text
-        user_states[user_id] = 'done'
-        reply = "✅ 通勤提醒已設定完成！將於每日 {} 提醒你。".format(text)
+        # 驗證時間格式
+        try:
+            hour, minute = map(int, text.split(":"))
+            assert 0 <= hour < 24 and 0 <= minute < 60
+        except Exception:
+            reply = "提醒時間格式錯誤，請用 HH:MM（如 07:00）"
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+            return
 
-        # 建立排程任務
-        hour, minute = map(int, text.split(":"))
-        job_id = f"reminder_{user_id}"
-        scheduler.add_job(send_daily_reminder, 'cron', hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True)
+        user_data[user_id]['remind_time'] = text
+
+        # 立即計算通勤建議
+        commute_result = get_commute_info(
+            user_data[user_id]['origin'],
+            user_data[user_id]['destination'],
+            user_data[user_id]['arrival_time']
+        )
+
+        if "error" in commute_result:
+            reply_msg = f"❌ 設定失敗：{commute_result['error']}\n請重新輸入「設定通勤」開始設定"
+            user_states[user_id] = 'start'
+            user_data.pop(user_id, None)
+        else:
+            reply_msg = f"""✅ 通勤提醒設定完成！以下是您的設定：
+━━━━━━━━━━━━━━
+📍 出發地：{user_data[user_id]['origin']}
+🏁 目的地：{user_data[user_id]['destination']}
+⏰ 希望抵達時間：{user_data[user_id]['arrival_time']}
+🔔 每日提醒時間：{text}
+━━━━━━━━━━━━━━
+📣 根據目前路況：
+🚪 建議出發時間：{commute_result['best_departure_time']}
+⏱ 預估通勤時間：{commute_result['duration_text']}
+"""
+            user_states[user_id] = 'done'
+            # 建立排程任務
+            job_id = f"reminder_{user_id}"
+            scheduler.add_job(
+                send_daily_reminder, 
+                'cron', 
+                hour=hour, 
+                minute=minute, 
+                args=[user_id], 
+                id=job_id, 
+                replace_existing=True
+            )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
+        return
 
     else:
         reply = "請輸入「設定通勤」來開始設定"
