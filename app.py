@@ -114,109 +114,143 @@ def callback():
         logger.exception("處理 Webhook 時發生錯誤")
         return 'Error', 500
 
+# --- Google Distance Matrix 通勤計算 ---
+def get_commute_info(origin, destination, arrival_time_str, mode):
+    today = time.strftime("%Y-%m-%d")
+    try:
+        arrival_dt = time.strptime(f"{today} {arrival_time_str}", "%Y-%m-%d %H:%M")
+    except Exception:
+        return {"error": "抵達時間格式錯誤，請用 HH:MM（如 08:30）"}
+    arrival_timestamp = int(time.mktime(arrival_dt))
+
+    url = 'https://maps.googleapis.com/maps/api/distancematrix/json'
+    params = {
+        'origins': origin,
+        'destinations': destination,
+        'mode': mode,
+        'key': GOOGLE_API_KEY,
+        'language': 'zh-TW'
+    }
+    if mode == 'transit':
+        params['arrival_time'] = arrival_timestamp
+
+    response = requests.get(url, params=params).json()
+    try:
+        element = response['rows'][0]['elements'][0]
+        duration_sec = element['duration']['value']
+        duration_text = element['duration']['text']
+        best_departure_time = arrival_timestamp - duration_sec if mode == 'transit' else int(time.time())
+        best_departure_str = time.strftime("%H:%M", time.localtime(best_departure_time))
+
+        return {
+            "duration_minutes": duration_sec // 60,
+            "duration_text": duration_text,
+            "best_departure_time": best_departure_str
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 # --- 處理訊息 ---
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    try:
-        user_id = event.source.user_id
-        text = event.message.text.strip()
-        logger.info(f"處理用戶 {user_id} 的訊息: {text}")
+    user_id = event.source.user_id
+    text = event.message.text.strip()
+    state = user_states.get(user_id, 'start')
 
-        state = user_states.get(user_id, 'start')
-
-        if text.lower() in ["設定通勤", "start"]:
-            user_states[user_id] = 'awaiting_origin'
-            user_data[user_id] = {}
-            reply = "請輸入出發地"
-        
-        elif state == 'awaiting_origin':
-            user_data[user_id]['origin'] = text
-            user_states[user_id] = 'awaiting_destination'
-            reply = "請輸入目的地"
-        
-        elif state == 'awaiting_destination':
-            user_data[user_id]['destination'] = text
+    if text.lower() in ["設定通勤", "start"]:
+        user_states[user_id] = 'awaiting_origin'
+        user_data[user_id] = {}
+        reply = "請輸入出發地"
+    
+    elif state == 'awaiting_origin':
+        user_data[user_id]['origin'] = text
+        user_states[user_id] = 'awaiting_destination'
+        reply = "請輸入目的地"
+    
+    elif state == 'awaiting_destination':
+        user_data[user_id]['destination'] = text
+        user_states[user_id] = 'awaiting_mode'
+        reply = "請選擇通勤方式：\n1. 大眾運輸\n2. 開車\n3. 步行\n4. 腳踏車\n請輸入數字（例如 1）"
+    
+    elif state == 'awaiting_mode':
+        mode_map = {'1': 'transit', '2': 'driving', '3': 'walking', '4': 'bicycling'}
+        if text not in mode_map:
+            reply = "請輸入正確的數字（1~4）"
+        else:
+            user_data[user_id]['mode'] = mode_map[text]
             user_states[user_id] = 'awaiting_arrival'
             reply = "請輸入希望抵達時間（例如 08:30）"
-        
-        elif state == 'awaiting_arrival':
-            try:
-                time.strptime(text, "%H:%M")
-                user_data[user_id]['arrival_time'] = text
-                user_states[user_id] = 'awaiting_remind'
-                reply = "請輸入每日提醒時間（例如 07:00）"
-            except Exception:
-                reply = "⛔ 時間格式錯誤，請用 HH:MM（如 08:30）"
-                logger.warning(f"用戶 {user_id} 輸入無效時間: {text}")
-        
-        elif state == 'awaiting_remind':
-            try:
-                hour, minute = map(int, text.split(":"))
-                assert 0 <= hour < 24 and 0 <= minute < 60
-                
-                user_data[user_id]['remind_time'] = text
-                logger.debug(f"用戶 {user_id} 完整設定: {user_data[user_id]}")
+    
+    elif state == 'awaiting_arrival':
+        try:
+            time.strptime(text, "%H:%M")
+            user_data[user_id]['arrival_time'] = text
+            user_states[user_id] = 'awaiting_remind'
+            reply = "請輸入每日提醒時間（例如 07:00）"
+        except Exception:
+            reply = "時間格式錯誤，請用 HH:MM（如 08:30）"
+    
+    elif state == 'awaiting_remind':
+        try:
+            hour, minute = map(int, text.split(":"))
+            assert 0 <= hour < 24 and 0 <= minute < 60
+            user_data[user_id]['remind_time'] = text
 
-                commute_result = get_commute_info(
-                    user_data[user_id]['origin'],
-                    user_data[user_id]['destination'],
-                    user_data[user_id]['arrival_time']
-                )
+            commute_result = get_commute_info(
+                user_data[user_id]['origin'],
+                user_data[user_id]['destination'],
+                user_data[user_id]['arrival_time'],
+                user_data[user_id]['mode']
+            )
 
-                if "error" in commute_result:
-                    reply_msg = f"""❌ 設定失敗：{commute_result['error']}
+            if "error" in commute_result:
+                reply_msg = f"""❌ 設定失敗：{commute_result['error']}
 ━━━━━━━━━━━━━━
 💡 可能原因：
 1. 地址輸入不正確
-2. 大眾運輸路線不存在
+2. 路線不存在
 3. API 暫時故障
 
 請重新輸入「設定通勤」開始設定"""
-                    user_states[user_id] = 'start'
-                    user_data.pop(user_id, None)
-                    logger.error(f"設定失敗: {commute_result['error']}")
-                else:
-                    reply_msg = f"""✅ 通勤提醒設定完成！
+                user_states[user_id] = 'start'
+                user_data.pop(user_id, None)
+            else:
+                mode_display = {
+                    'transit': '大眾運輸',
+                    'driving': '開車',
+                    'walking': '步行',
+                    'bicycling': '腳踏車'
+                }
+                reply_msg = f"""✅ 通勤提醒設定完成！
 ━━━━━━━━━━━━━━
 📍 出發地：{user_data[user_id]['origin']}
 🏁 目的地：{user_data[user_id]['destination']}
+🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
 ⏰ 希望抵達時間：{user_data[user_id]['arrival_time']}
 🔔 每日提醒時間：{text}
 ━━━━━━━━━━━━━━
 📣 根據目前路況：
 🚪 建議出發時間：{commute_result['best_departure_time']}
 ⏱ 預估通勤時間：{commute_result['duration_text']}"""
-                    
-                    job_id = f"reminder_{user_id}"
-                    scheduler.add_job(
-                        send_daily_reminder, 
-                        'cron', 
-                        hour=hour, 
-                        minute=minute, 
-                        args=[user_id], 
-                        id=job_id, 
-                        replace_existing=True
-                    )
-                    logger.info(f"已為用戶 {user_id} 建立排程任務 {job_id}")
-
-            except Exception as e:
-                logger.exception(f"處理提醒時間時發生錯誤")
-                reply_msg = "❌ 發生未預期錯誤，請稍後再試"
-                user_states[user_id] = 'start'
-                user_data.pop(user_id, None)
-
+                user_states[user_id] = 'done'
+                job_id = f"reminder_{user_id}"
+                scheduler.add_job(
+                    send_daily_reminder, 
+                    'cron', 
+                    hour=hour, 
+                    minute=minute, 
+                    args=[user_id], 
+                    id=job_id, 
+                    replace_existing=True
+                )
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
             return
+        except Exception:
+            reply = "提醒時間格式錯誤，請用 HH:MM（如 07:00）"
+    else:
+        reply = "請輸入「設定通勤」來開始設定"
 
-        else:
-            reply = "請輸入「設定通勤」來開始設定"
-
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-
-    except Exception as e:
-        logger.exception("處理訊息時發生未預期錯誤")
-        line_bot_api.reply_message(event.reply_token, 
-            TextSendMessage(text="⚠️ 系統暫時發生錯誤，請稍後再試"))
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
 # --- 啟動服務 ---
 if __name__ == "__main__":
