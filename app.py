@@ -138,7 +138,7 @@ def get_commute_info(origin, destination, arrival_time_str, mode):
         params['arrival_time'] = arrival_timestamp
     else:
         # 若用戶希望指定抵達時間，需反向計算出發時間
-        params['departure_time'] = arrival_timestamp  # 此處需調整邏輯
+        params['departure_time'] = 'now'  # 此處需調整邏輯
 
     response = requests.get(url, params=params).json()
     try:
