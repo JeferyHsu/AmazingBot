@@ -32,9 +32,13 @@ user_data = {}
 # Google Distance Matrix 查詢
 def get_commute_info(origin, destination, datetime_str, mode, time_type):
     try:
+        # 將用戶輸入的日期時間轉換為 timestamp
         dt = time.strptime(datetime_str, "%Y-%m-%d %H:%M")
         dt_timestamp = int(time.mktime(dt))
         now_timestamp = int(time.time())
+        
+        # 共用變數宣告
+        arrival_timestamp = dt_timestamp  # 用戶選擇的時間（無論是出發或抵達）
         
         # 檢查是否為未來時間
         if dt_timestamp <= now_timestamp:
@@ -50,43 +54,32 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
         }
 
         if mode == 'transit':
-            # 大眾運輸直接使用 arrival_time/departure_time
             if time_type == 'arrival':
-                params['arrival_time'] = dt_timestamp
+                params['arrival_time'] = arrival_timestamp
             else:
-                params['departure_time'] = dt_timestamp
+                params['departure_time'] = arrival_timestamp
         else:
-            # 非大眾運輸：用反推法模擬未來路況
             if time_type == 'arrival':
-                # 目標抵達時間
-                target_arrival = dt_timestamp
-                # 初始猜測：抵達時間 - 30分鐘
-                initial_guess_offset = 3600  # 60 分鐘
-                guess_departure = arrival_timestamp - initial_guess_offset
-
-                # 增加迭代次數至 10 次
-                for _ in range(10):
+                # 反推法計算出發時間
+                guess_departure = arrival_timestamp - 3600  # 初始猜測 1 小時前
+                for _ in range(10):  # 增加迭代次數
                     params['departure_time'] = guess_departure
-                    # 開車模式指定 traffic_model
                     if mode == 'driving':
                         params['traffic_model'] = 'best_guess'
                     
                     response = requests.get(url, params=params).json()
                     element = response['rows'][0]['elements'][0]
                     
-                    # 優先使用 duration_in_traffic
                     if 'duration_in_traffic' in element:
                         duration_sec = element['duration_in_traffic']['value']
                     else:
                         duration_sec = element['duration']['value']
                     
-                    # 更新出發時間
                     new_departure = arrival_timestamp - duration_sec
-                    if abs(new_departure - guess_departure) < 30:  # 收斂到 30 秒內
+                    if abs(new_departure - guess_departure) < 30:  # 嚴格收斂條件
                         break
                     guess_departure = new_departure
                 
-                # 最終出發時間
                 best_departure_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(guess_departure))
                 duration_text = element['duration']['text']
                 distance_text = element['distance']['text']
@@ -96,16 +89,13 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
                     "duration_text": duration_text,
                     "best_departure_time": best_departure_str,
                     "distance_text": distance_text,
-                    "estimated_arrival_time": datetime_str  # 用戶指定的抵達時間
+                    "estimated_arrival_time": datetime_str
                 }
             else:
-                # 用戶選的是出發時間，直接查詢
-                params['departure_time'] = dt_timestamp
-        
-        # 執行查詢
-        logger.debug(f"發送 Google API 請求：{params}")
+                params['departure_time'] = arrival_timestamp
+
+        # 執行 API 請求
         response = requests.get(url, params=params).json()
-        logger.debug(f"Google API 回應：{response}")
 
         if response.get('status') != 'OK':
             return {"error": f"Google API 回傳異常: {response.get('status')}, {response.get('error_message', '')}"}
