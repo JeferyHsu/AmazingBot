@@ -178,77 +178,12 @@ def handle_message(event):
             )
             line_bot_api.reply_message(event.reply_token, reply)
             return
-    elif state == 'awaiting_remind':
-        try:
-            hour, minute = map(int, text.split(":"))
-            assert 0 <= hour < 24 and 0 <= minute < 60
-            user_data[user_id]['remind_time'] = text
-            # 顯示設定總結
-            mode_display = {
-                'transit': '大眾運輸',
-                'driving': '開車',
-                'walking': '步行',
-                'bicycling': '腳踏車'
-            }
-            dt_type = "出發" if user_data[user_id]['time_type'] == 'departure' else "抵達"
-            dt_val = user_data[user_id]['datetime']
-            commute_result = get_commute_info(
-                user_data[user_id]['origin'],
-                user_data[user_id]['destination'],
-                dt_val,
-                user_data[user_id]['mode'],
-                user_data[user_id]['time_type']
-            )
-            if "error" in commute_result:
-                reply_msg = f"""❌ 設定失敗：{commute_result['error']}
-━━━━━━━━━━━━━━
-💡 可能原因：
-1. 地址輸入不正確
-2. 路線不存在
-3. API 暫時故障
-
-請重新輸入「設定通勤」開始設定"""
-                user_states[user_id] = 'start'
-                user_data.pop(user_id, None)
-            else:
-                if user_data[user_id]['time_type'] == 'departure':
-                    reply_msg = f"""✅ 通勤提醒設定完成！
-━━━━━━━━━━━━━━
-📍 出發地：{user_data[user_id]['origin']}
-🏁 目的地：{user_data[user_id]['destination']}
-🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
-🛣️ 總共里程：{commute_result['distance_text']}
-⏰ 出發日期時間：{dt_val}
-🔔 每日提醒時間：{text}
-━━━━━━━━━━━━━━
-📣 根據目前路況：
-🏁 預計抵達時間：{commute_result['estimated_arrival_time']}
-⏱ 預估通勤時間：{commute_result['duration_text']}"""
-                else:
-                    reply_msg = f"""✅ 通勤提醒設定完成！
-━━━━━━━━━━━━━━
-📍 出發地：{user_data[user_id]['origin']}
-🏁 目的地：{user_data[user_id]['destination']}
-🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
-🛣️ 總共里程：{commute_result['distance_text']}
-⏰ {dt_type}日期時間：{dt_val}
-🔔 每日提醒時間：{text}
-━━━━━━━━━━━━━━
-📣 根據目前路況：
-🚪 建議出發時間：{commute_result['best_departure_time']}
-⏱ 預估通勤時間：{commute_result['duration_text']}"""
-
-                user_states[user_id] = 'done'
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
-            return
-        except Exception:
-            reply = "提醒時間格式錯誤，請用 HH:MM（如 07:00）"
     else:
         reply = "請輸入「設定通勤」來開始設定"
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
-# 處理 Postback（Datetime Picker 與出發/抵達選擇）
+
 @handler.add(PostbackEvent)
 def handle_postback(event):
     user_id = event.source.user_id
@@ -305,11 +240,60 @@ def handle_postback(event):
         dt = params.get("datetime")  # 格式 '2025-06-05T08:30'
         if dt:
             user_data[user_id]['datetime'] = dt.replace("T", " ")
-            user_states[user_id] = 'awaiting_remind'
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text=f"你選擇的日期時間是：{dt.replace('T',' ')}\n請輸入每日提醒時間（例如 07:00）")
+            # 直接查詢並顯示結果
+            dt_type = "出發" if user_data[user_id]['time_type'] == 'departure' else "抵達"
+            dt_val = user_data[user_id]['datetime']
+            commute_result = get_commute_info(
+                user_data[user_id]['origin'],
+                user_data[user_id]['destination'],
+                dt_val,
+                user_data[user_id]['mode'],
+                user_data[user_id]['time_type']
             )
+            mode_display = {
+                'transit': '大眾運輸',
+                'driving': '開車',
+                'walking': '步行',
+                'bicycling': '腳踏車'
+            }
+            if "error" in commute_result:
+                reply_msg = f"""❌ 設定失敗：{commute_result['error']}
+━━━━━━━━━━━━━━
+💡 可能原因：
+1. 地址輸入不正確
+2. 路線不存在
+3. API 暫時故障
+
+請重新輸入「設定通勤」開始設定"""
+                user_states[user_id] = 'start'
+                user_data.pop(user_id, None)
+            else:
+                if user_data[user_id]['time_type'] == 'departure':
+                    reply_msg = f"""✅ 通勤提醒設定完成！
+━━━━━━━━━━━━━━
+📍 出發地：{user_data[user_id]['origin']}
+🏁 目的地：{user_data[user_id]['destination']}
+🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
+🛣️ 總共里程：{commute_result['distance_text']}
+⏰ 出發日期時間：{dt_val}
+━━━━━━━━━━━━━━
+📣 根據目前路況：
+🏁 預計抵達時間：{commute_result['estimated_arrival_time']}
+⏱ 預估通勤時間：{commute_result['duration_text']}"""
+                else:
+                    reply_msg = f"""✅ 通勤提醒設定完成！
+━━━━━━━━━━━━━━
+📍 出發地：{user_data[user_id]['origin']}
+🏁 目的地：{user_data[user_id]['destination']}
+🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
+🛣️ 總共里程：{commute_result['distance_text']}
+⏰ {dt_type}日期時間：{dt_val}
+━━━━━━━━━━━━━━
+📣 根據目前路況：
+🚪 建議出發時間：{commute_result['best_departure_time']}
+⏱ 預估通勤時間：{commute_result['duration_text']}"""
+                user_states[user_id] = 'done'
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
         else:
             line_bot_api.reply_message(
                 event.reply_token,
