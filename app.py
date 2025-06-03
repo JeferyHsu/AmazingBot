@@ -120,68 +120,54 @@ def callback():
 
 # --- Google Distance Matrix 通勤計算 ---
 def get_commute_info(origin, destination, arrival_time_str, mode):
+    today = time.strftime("%Y-%m-%d")
     try:
-        # 解析用戶輸入的抵達時間（轉換為時間戳）
-        today = time.strftime("%Y-%m-%d")
         arrival_dt = time.strptime(f"{today} {arrival_time_str}", "%Y-%m-%d %H:%M")
-        arrival_timestamp = int(time.mktime(arrival_dt))
+    except Exception:
+        return {"error": "抵達時間格式錯誤，請用 HH:MM（如 08:30）"}
+    arrival_timestamp = int(time.mktime(arrival_dt))
 
-        # 根據模式設定 API 參數
-        params = {
-            'origins': origin,
-            'destinations': destination,
-            'mode': mode,
-            'key': GOOGLE_API_KEY,
-            'language': 'zh-TW'
-        }
+    url = 'https://maps.googleapis.com/maps/api/distancematrix/json'
+    params = {
+        'origins': origin,
+        'destinations': destination,
+        'mode': mode,
+        'key': GOOGLE_API_KEY,
+        'language': 'zh-TW',
+        'departure_time': 'now' if mode != 'transit' else None  # 預設使用當前時間
+    }
 
-        if mode == 'transit':
-            # 大眾運輸：指定抵達時間
-            params['arrival_time'] = arrival_timestamp
-        else:
-            # 開車/步行/腳踏車：計算出發時間 = 抵達時間 - 預估通勤時間（需迭代計算）
-            # 首次請求使用即時數據作為基準
-            params['departure_time'] = 'now'
+    # 大眾運輸需指定 arrival_time，其他模式需計算出發時間
+    if mode == 'transit':
+        params['arrival_time'] = arrival_timestamp
+    else:
+        # 若用戶希望指定抵達時間，需反向計算出發時間
+        params['departure_time'] = 'now'  # 此處需調整邏輯
 
-        # 第一次 API 請求獲取即時通勤時間
-        response = requests.get('https://maps.googleapis.com/maps/api/distancematrix/json', params=params).json()
-        # 防呆檢查
-        if response.get('status') != 'OK':
-            return {"error": f"Google API 回傳異常: {response.get('status')}, {response.get('error_message', '')}"}
-        if not response.get('rows') or not response['rows'][0].get('elements'):
-            return {"error": "Google API 回傳資料異常，請檢查地址是否正確"}
+    response = requests.get(url, params=params).json()
+    try:
         element = response['rows'][0]['elements'][0]
-        if element.get('status') != 'OK':
-            return {"error": f"路線查詢失敗：{element.get('status')}"}
-        element = response['rows'][0]['elements'][0]
-
+        
+        # 開車模式優先使用 duration_in_traffic
         if mode == 'driving' and 'duration_in_traffic' in element:
             duration_sec = element['duration_in_traffic']['value']
         else:
             duration_sec = element['duration']['value']
-
-        # 計算初始建議出發時間
-        suggested_departure_timestamp = arrival_timestamp - duration_sec
-
-        # 第二次 API 請求獲取預測數據（僅開車模式需要）
-        if mode == 'driving':
-            params['departure_time'] = suggested_departure_timestamp
-            response = requests.get('https://maps.googleapis.com/maps/api/distancematrix/json', params=params).json()
-            element = response['rows'][0]['elements'][0]
-            duration_sec = element['duration_in_traffic']['value']
-
-        # 最終計算
-        best_departure_str = time.strftime("%H:%M", time.localtime(suggested_departure_timestamp))
+            
         duration_text = element['duration']['text']
+        
+        # 計算建議出發時間（適用所有模式）
+        best_departure_time = arrival_timestamp - duration_sec
+        best_departure_str = time.strftime("%H:%M", time.localtime(best_departure_time))
 
         return {
             "duration_minutes": duration_sec // 60,
             "duration_text": duration_text,
             "best_departure_time": best_departure_str
         }
-
     except Exception as e:
         return {"error": str(e)}
+
 
 # --- 處理訊息 ---
 @handler.add(MessageEvent, message=TextMessage)
