@@ -55,12 +55,14 @@ def get_commute_info(origin, destination, arrival_time_str):
         data = response.json()
         logger.debug(f"Google API 回應：{data}")
 
-        if data['status'] != 'OK':
-            return {"error": f"API 回傳狀態異常：{data['status']}"}
+        if response.get('status') != 'OK':
+            return {"error": f"Google API 回傳異常: {response.get('status')}, {response.get('error_message', '')}"}
+        if not response.get('rows') or not response['rows'][0].get('elements'):
+            return {"error": "Google API 回傳資料異常，請檢查地址是否正確"}
+        element = response['rows'][0]['elements'][0]
+        if element.get('status') != 'OK':
+            return {"error": f"路線查詢失敗：{element.get('status')}"}
 
-        element = data['rows'][0]['elements'][0]
-        if element['status'] != 'OK':
-            return {"error": f"路線計算失敗：{element['status']}"}
 
         duration_sec = element['duration']['value']
         duration_text = element['duration']['text']
