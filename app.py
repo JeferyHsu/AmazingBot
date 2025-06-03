@@ -6,6 +6,7 @@ import requests
 import time
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
+from dotenv import load_dotenv
 
 # 初始化日志配置
 logging.basicConfig(
@@ -18,10 +19,11 @@ app = Flask(__name__)
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-# 填入你的 Line 與 Google API 金鑰
-LINE_CHANNEL_ACCESS_TOKEN = 'pdxQwcQxz8sOVIXDT0mQVU6j2KnZK7Zf13E/wXxn/Wj+blTFU/XGijzBewUrHv79WkcQxPhM+s7v83fGrltXNk+Fdc8ISrQL7wwzawxXuDGqr193XZoVJ2U+4TQF+39XQidtMhLWmGQ7fmUu3GFJGQdB04t89/1O/w1cDnyilFU='
-LINE_CHANNEL_SECRET = 'e5d82a887b7ccff529e3037cff4a46d6'
-GOOGLE_API_KEY = 'AIzaSyCZVRwyR7PP9vQltot84y9uFvMhhpm0dus'
+load_dotenv()  # 讀取 .env 檔案
+
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
