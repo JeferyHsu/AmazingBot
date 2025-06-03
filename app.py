@@ -172,28 +172,28 @@ def handle_message(event):
             else:
                 if user_data[user_id]['time_type'] == 'departure':
                     reply_msg = f"""✅ 通勤提醒設定完成！
-                ━━━━━━━━━━━━━━
-                📍 出發地：{user_data[user_id]['origin']}
-                🏁 目的地：{user_data[user_id]['destination']}
-                🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
-                ⏰ 出發日期時間：{dt_val}
-                🔔 每日提醒時間：{text}
-                ━━━━━━━━━━━━━━
-                📣 根據目前路況：
-                🏁 預計抵達時間：{commute_result['estimated_arrival_time']}
-                ⏱ 預估通勤時間：{commute_result['duration_text']}"""
+━━━━━━━━━━━━━━
+📍 出發地：{user_data[user_id]['origin']}
+🏁 目的地：{user_data[user_id]['destination']}
+🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
+⏰ 出發日期時間：{dt_val}
+🔔 每日提醒時間：{text}
+━━━━━━━━━━━━━━
+📣 根據目前路況：
+🏁 預計抵達時間：{commute_result['estimated_arrival_time']}
+⏱ 預估通勤時間：{commute_result['duration_text']}"""
                 else:
                     reply_msg = f"""✅ 通勤提醒設定完成！
-                ━━━━━━━━━━━━━━
-                📍 出發地：{user_data[user_id]['origin']}
-                🏁 目的地：{user_data[user_id]['destination']}
-                🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
-                ⏰ 抵達日期時間：{dt_val}
-                🔔 每日提醒時間：{text}
-                ━━━━━━━━━━━━━━
-                📣 根據目前路況：
-                🚪 建議出發時間：{commute_result['best_departure_time']}
-                ⏱ 預估通勤時間：{commute_result['duration_text']}"""
+━━━━━━━━━━━━━━
+📍 出發地：{user_data[user_id]['origin']}
+🏁 目的地：{user_data[user_id]['destination']}
+🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
+⏰ 抵達日期時間：{dt_val}
+🔔 每日提醒時間：{text}
+━━━━━━━━━━━━━━
+📣 根據目前路況：
+🚪 建議出發時間：{commute_result['best_departure_time']}
+⏱ 預估通勤時間：{commute_result['duration_text']}"""
 
                 user_states[user_id] = 'done'
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
