@@ -53,7 +53,10 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
         else:
             params['departure_time'] = dt_timestamp
 
+        logger.debug(f"發送 Google API 請求：{params}")
         response = requests.get(url, params=params).json()
+        logger.debug(f"Google API 回應：{response}")
+
         if response.get('status') != 'OK':
             return {"error": f"Google API 回傳異常: {response.get('status')}, {response.get('error_message', '')}"}
         if not response.get('rows') or not response['rows'][0].get('elements'):
@@ -62,6 +65,10 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
         if element.get('status') != 'OK':
             return {"error": f"路線查詢失敗：{element.get('status')}"}
 
+        # 取得距離資訊
+        distance_text = element['distance']['text']
+        distance_value = element['distance']['value']
+
         if mode == 'driving' and 'duration_in_traffic' in element:
             duration_sec = element['duration_in_traffic']['value']
             duration_text = element['duration_in_traffic']['text']
@@ -69,26 +76,20 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
             duration_sec = element['duration']['value']
             duration_text = element['duration']['text']
 
-        if time_type == 'departure':
-            # 預計抵達時間
-            estimated_arrival_time = dt_timestamp + duration_sec
-            estimated_arrival_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(estimated_arrival_time))
-            return {
-                "duration_minutes": duration_sec // 60,
-                "duration_text": duration_text,
-                "estimated_arrival_time": estimated_arrival_str
-            }
-        else:
-            # 建議出發時間
-            best_departure_time = dt_timestamp - duration_sec
-            best_departure_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(best_departure_time))
-            return {
-                "duration_minutes": duration_sec // 60,
-                "duration_text": duration_text,
-                "best_departure_time": best_departure_str
-            }
+        best_departure_time = dt_timestamp if time_type == 'departure' else dt_timestamp - duration_sec
+        best_departure_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(best_departure_time))
+
+        return {
+            "duration_minutes": duration_sec // 60,
+            "duration_text": duration_text,
+            "best_departure_time": best_departure_str,
+            "distance_text": distance_text,
+            "distance_value": distance_value
+        }
     except Exception as e:
+        logger.exception("通勤計算發生未預期錯誤")
         return {"error": f"系統錯誤：{str(e)}"}
+
 
 # Webhook
 @app.route("/callback", methods=["POST"])
@@ -176,6 +177,7 @@ def handle_message(event):
 📍 出發地：{user_data[user_id]['origin']}
 🏁 目的地：{user_data[user_id]['destination']}
 🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
+🛣️ 總共里程：{commute_result['distance_text']}
 ⏰ 出發日期時間：{dt_val}
 🔔 每日提醒時間：{text}
 ━━━━━━━━━━━━━━
@@ -188,7 +190,8 @@ def handle_message(event):
 📍 出發地：{user_data[user_id]['origin']}
 🏁 目的地：{user_data[user_id]['destination']}
 🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
-⏰ 抵達日期時間：{dt_val}
+🛣️ 總共里程：{commute_result['distance_text']}
+⏰ {dt_type}日期時間：{dt_val}
 🔔 每日提醒時間：{text}
 ━━━━━━━━━━━━━━
 📣 根據目前路況：
