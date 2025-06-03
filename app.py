@@ -61,26 +61,28 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
                 # 目標抵達時間
                 target_arrival = dt_timestamp
                 # 初始猜測：抵達時間 - 30分鐘
-                guess_departure = target_arrival - 1800
-                
-                # 最多迭代 5 次
-                for _ in range(5):
+                initial_guess_offset = 3600  # 60 分鐘
+                guess_departure = arrival_timestamp - initial_guess_offset
+
+                # 增加迭代次數至 10 次
+                for _ in range(10):
                     params['departure_time'] = guess_departure
+                    # 開車模式指定 traffic_model
                     if mode == 'driving':
                         params['traffic_model'] = 'best_guess'
                     
                     response = requests.get(url, params=params).json()
                     element = response['rows'][0]['elements'][0]
                     
-                    # 取得預估通勤時間
-                    if mode == 'driving' and 'duration_in_traffic' in element:
+                    # 優先使用 duration_in_traffic
+                    if 'duration_in_traffic' in element:
                         duration_sec = element['duration_in_traffic']['value']
                     else:
                         duration_sec = element['duration']['value']
                     
-                    # 計算新的出發時間
-                    new_departure = target_arrival - duration_sec
-                    if abs(new_departure - guess_departure) < 60:  # 收斂到1分鐘內
+                    # 更新出發時間
+                    new_departure = arrival_timestamp - duration_sec
+                    if abs(new_departure - guess_departure) < 30:  # 收斂到 30 秒內
                         break
                     guess_departure = new_departure
                 
