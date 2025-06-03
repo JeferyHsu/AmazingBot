@@ -145,6 +145,14 @@ def get_commute_info(origin, destination, arrival_time_str, mode):
 
         # 第一次 API 請求獲取即時通勤時間
         response = requests.get('https://maps.googleapis.com/maps/api/distancematrix/json', params=params).json()
+        # 防呆檢查
+        if response.get('status') != 'OK':
+            return {"error": f"Google API 回傳異常: {response.get('status')}, {response.get('error_message', '')}"}
+        if not response.get('rows') or not response['rows'][0].get('elements'):
+            return {"error": "Google API 回傳資料異常，請檢查地址是否正確"}
+        element = response['rows'][0]['elements'][0]
+        if element.get('status') != 'OK':
+            return {"error": f"路線查詢失敗：{element.get('status')}"}
         element = response['rows'][0]['elements'][0]
 
         if mode == 'driving' and 'duration_in_traffic' in element:
