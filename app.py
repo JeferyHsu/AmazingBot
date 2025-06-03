@@ -33,7 +33,7 @@ user_states = {}
 user_data = {}
 
 # --- Google Distance Matrix 通勤計算 ---
-def get_commute_info(origin, destination, arrival_time_str):
+def get_commute_info(origin, destination, arrival_time_str, mode):
     try:
         logger.debug(f"開始計算通勤時間：{origin} -> {destination} 抵達 {arrival_time_str}")
         
