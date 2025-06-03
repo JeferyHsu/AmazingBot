@@ -1,127 +1,24 @@
+import os
+import time
 from flask import Flask, request
 from linebot import LineBotApi, WebhookHandler
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-import os
-import requests
-import time
-import logging
-from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
-# 初始化日志配置
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-app = Flask(__name__)
-scheduler = BackgroundScheduler()
-scheduler.start()
-
-load_dotenv()  # 讀取 .env 檔案
-
+# 載入 .env
+load_dotenv()
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
+app = Flask(__name__)
+
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# 暫存使用者狀態與資料（正式建議用資料庫）
+# 用戶狀態與資料（正式建議用資料庫）
 user_states = {}
 user_data = {}
-
-# --- Google Distance Matrix 通勤計算 ---
-def get_commute_info(origin, destination, arrival_time_str, mode):
-    try:
-        logger.debug(f"開始計算通勤時間：{origin} -> {destination} 抵達 {arrival_time_str}")
-        
-        today = time.strftime("%Y-%m-%d")
-        arrival_dt = time.strptime(f"{today} {arrival_time_str}", "%Y-%m-%d %H:%M")
-        arrival_timestamp = int(time.mktime(arrival_dt))
-
-        url = 'https://maps.googleapis.com/maps/api/distancematrix/json'
-        params = {
-            'origins': origin,
-            'destinations': destination,
-            'mode': 'transit',
-            'arrival_time': arrival_timestamp,
-            'key': GOOGLE_API_KEY,
-            'language': 'zh-TW'
-        }
-
-        logger.debug(f"發送 Google API 請求：{params}")
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        logger.debug(f"Google API 回應：{data}")
-
-        if response.get('status') != 'OK':
-            return {"error": f"Google API 回傳異常: {response.get('status')}, {response.get('error_message', '')}"}
-        if not response.get('rows') or not response['rows'][0].get('elements'):
-            return {"error": "Google API 回傳資料異常，請檢查地址是否正確"}
-        element = response['rows'][0]['elements'][0]
-        if element.get('status') != 'OK':
-            return {"error": f"路線查詢失敗：{element.get('status')}"}
-
-
-        duration_sec = element['duration']['value']
-        duration_text = element['duration']['text']
-        best_departure_time = arrival_timestamp - duration_sec
-        best_departure_str = time.strftime("%H:%M", time.localtime(best_departure_time))
-
-        return {
-            "duration_minutes": duration_sec // 60,
-            "duration_text": duration_text,
-            "best_departure_time": best_departure_str
-        }
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"API 請求失敗: {str(e)}")
-        return {"error": "地圖服務暫時不可用"}
-    except Exception as e:
-        logger.exception("通勤計算發生未預期錯誤")
-        return {"error": f"系統錯誤：{str(e)}"}
-
-# --- 傳送每日提醒 ---
-def send_daily_reminder(user_id):
-    try:
-        logger.info(f"傳送每日提醒給用戶 {user_id}")
-        data = user_data.get(user_id)
-        if not data:
-            logger.warning(f"找不到用戶 {user_id} 的資料")
-            return
-            
-        result = get_commute_info(
-            data['origin'],
-            data['destination'],
-            data['arrival_time'],
-            data['mode']
-        )
-        if "error" in result:
-            msg = f"🚨 通勤查詢失敗: {result['error']}"
-        else:
-            msg = f"🚗 今日建議你 {result['best_departure_time']} 出門\n預估通勤時間：{result['duration_text']}"
-        
-        line_bot_api.push_message(user_id, TextSendMessage(text=msg))
-        logger.debug(f"已發送訊息給 {user_id}: {msg}")
-
-    except Exception as e:
-        logger.exception(f"傳送提醒時發生錯誤")
-
-# --- Line Webhook ---
-@app.route("/callback", methods=["POST"])
-def callback():
-    try:
-        signature = request.headers['X-Line-Signature']
-        body = request.get_data(as_text=True)
-        logger.debug(f"收到 Line 訊息: {body}")
-        handler.handle(body, signature)
-        return 'OK'
-    except Exception as e:
-        logger.exception("處理 Webhook 時發生錯誤")
-        return 'Error', 500
 
 # --- Google Distance Matrix 通勤計算 ---
 def get_commute_info(origin, destination, arrival_time_str, mode):
@@ -133,46 +30,68 @@ def get_commute_info(origin, destination, arrival_time_str, mode):
     arrival_timestamp = int(time.mktime(arrival_dt))
 
     url = 'https://maps.googleapis.com/maps/api/distancematrix/json'
-    params = {
+    params_base = {
         'origins': origin,
         'destinations': destination,
         'mode': mode,
         'key': GOOGLE_API_KEY,
-        'language': 'zh-TW',
-        'departure_time': 'now' if mode != 'transit' else None  # 預設使用當前時間
+        'language': 'zh-TW'
     }
 
-    # 大眾運輸需指定 arrival_time，其他模式需計算出發時間
     if mode == 'transit':
+        params = params_base.copy()
         params['arrival_time'] = arrival_timestamp
-    else:
-        # 若用戶希望指定抵達時間，需反向計算出發時間
-        params['departure_time'] = 'now'  # 此處需調整邏輯
-
-    response = requests.get(url, params=params).json()
-    try:
-        element = response['rows'][0]['elements'][0]
-        
-        # 開車模式優先使用 duration_in_traffic
-        if mode == 'driving' and 'duration_in_traffic' in element:
-            duration_sec = element['duration_in_traffic']['value']
-        else:
+        response = requests.get(url, params=params).json()
+        try:
+            element = response['rows'][0]['elements'][0]
             duration_sec = element['duration']['value']
-            
-        duration_text = element['duration']['text']
-        
-        # 計算建議出發時間（適用所有模式）
-        best_departure_time = arrival_timestamp - duration_sec
-        best_departure_str = time.strftime("%H:%M", time.localtime(best_departure_time))
-
+            duration_text = element['duration']['text']
+            best_departure_time = arrival_timestamp - duration_sec
+            best_departure_str = time.strftime("%H:%M", time.localtime(best_departure_time))
+            return {
+                "duration_minutes": duration_sec // 60,
+                "duration_text": duration_text,
+                "best_departure_time": best_departure_str
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    else:
+        # 反推法：迭代查詢
+        guess_departure = arrival_timestamp - 1800
+        for _ in range(5):
+            params = params_base.copy()
+            params['departure_time'] = guess_departure
+            if mode == 'driving':
+                params['traffic_model'] = 'best_guess'
+            response = requests.get(url, params=params).json()
+            try:
+                element = response['rows'][0]['elements'][0]
+                if mode == 'driving' and 'duration_in_traffic' in element:
+                    duration_sec = element['duration_in_traffic']['value']
+                    duration_text = element['duration_in_traffic']['text']
+                else:
+                    duration_sec = element['duration']['value']
+                    duration_text = element['duration']['text']
+                new_departure = arrival_timestamp - duration_sec
+                if abs(new_departure - guess_departure) < 60:
+                    break
+                guess_departure = new_departure
+            except Exception as e:
+                return {"error": str(e)}
+        best_departure_str = time.strftime("%H:%M", time.localtime(guess_departure))
         return {
             "duration_minutes": duration_sec // 60,
             "duration_text": duration_text,
             "best_departure_time": best_departure_str
         }
-    except Exception as e:
-        return {"error": str(e)}
 
+# --- Line Webhook ---
+@app.route("/callback", methods=["POST"])
+def callback():
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+    handler.handle(body, signature)
+    return 'OK'
 
 # --- 處理訊息 ---
 @handler.add(MessageEvent, message=TextMessage)
@@ -257,16 +176,6 @@ def handle_message(event):
 🚪 建議出發時間：{commute_result['best_departure_time']}
 ⏱ 預估通勤時間：{commute_result['duration_text']}"""
                 user_states[user_id] = 'done'
-                job_id = f"reminder_{user_id}"
-                scheduler.add_job(
-                    send_daily_reminder, 
-                    'cron', 
-                    hour=hour, 
-                    minute=minute, 
-                    args=[user_id], 
-                    id=job_id, 
-                    replace_existing=True
-                )
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
             return
         except Exception:
@@ -278,5 +187,4 @@ def handle_message(event):
 
 # --- 啟動服務 ---
 if __name__ == "__main__":
-    logger.info("啟動服務...")
     app.run(debug=True)
