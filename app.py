@@ -4,10 +4,10 @@ import logging
 from flask import Flask, request
 from linebot import LineBotApi, WebhookHandler
 from linebot.models import (
-    RichMenu, RichMenuArea, RichMenuBounds, RichMenuSize,
-    PostbackAction, RichMenuSwitchAction, MessageEvent, TextMessage, TextSendMessage, 
+    RichMenu, RichMenuArea, RichMenuBounds, RichMenuSize,MessageAction,
+    MessageEvent, TextMessage, TextSendMessage, 
     PostbackEvent, QuickReply, QuickReplyButton, PostbackAction,
-    MessageAction, TemplateSendMessage, ButtonsTemplate, DatetimePickerAction
+    TemplateSendMessage, ButtonsTemplate, DatetimePickerAction
 )
 from dotenv import load_dotenv
 import requests
@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 # 載入環境變數
 load_dotenv()
 
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
-GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+LINE_CHANNEL_ACCESS_TOKEN = 'LINE_CHANNEL_ACCESS_TOKEN '
+LINE_CHANNEL_SECRET = 'e9d0037973LINE_CHANNEL_SECRET'
+GOOGLE_API_KEY = 'GOOGLE_API_KEY'
 
 app = Flask(__name__)
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
@@ -211,7 +211,6 @@ def handle_message(event):
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
-
 @handler.add(PostbackEvent)
 def handle_postback(event):
     user_id = event.source.user_id
@@ -358,11 +357,6 @@ def handle_postback(event):
 
 # 啟動服務
 if __name__ == "__main__":
-    # 刪除所有舊 Rich Menu
-    existing_menus = line_bot_api.get_rich_menu_list()
-    for menu in existing_menus:
-        line_bot_api.delete_rich_menu(menu.rich_menu_id)
-        logger.info(f"已刪除舊 Rich Menu: {menu.rich_menu_id}")
     # 建立 Rich Menu
     rich_menu_id = line_bot_api.create_rich_menu(create_rich_menu())
     with open("111.png", 'rb') as f:
@@ -370,3 +364,4 @@ if __name__ == "__main__":
     line_bot_api.set_default_rich_menu(rich_menu_id)
     logger.info("啟動服務...")
     app.run(debug=True)
+
