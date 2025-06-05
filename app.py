@@ -10,6 +10,7 @@ from linebot.models import (
 )
 from dotenv import load_dotenv
 import requests
+from WeatherBot import get_city_and_district, get_weather
 
 # 初始化日誌
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -17,14 +18,14 @@ logger = logging.getLogger(__name__)
 
 # 載入環境變數
 load_dotenv()
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
-GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+
+LINE_CHANNEL_ACCESS_TOKEN = 'LINE_CHANNEL_ACCESS_TOKEN'
+LINE_CHANNEL_SECRET = 'LINE_CHANNEL_SECRET'
+GOOGLE_API_KEY = 'GOOGLE_API_KEY'
 
 app = Flask(__name__)
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
-
 # 暫存用戶狀態與資料（正式建議用資料庫）
 user_states = {}
 user_data = {}
@@ -32,18 +33,14 @@ user_data = {}
 # Google Distance Matrix 查詢
 def get_commute_info(origin, destination, datetime_str, mode, time_type):
     try:
-        # 將用戶輸入的日期時間轉換為 timestamp
+        # 將用戶輸入的日期時間轉為 timestamp
         dt = time.strptime(datetime_str, "%Y-%m-%d %H:%M")
         dt_timestamp = int(time.mktime(dt))
         now_timestamp = int(time.time())
-        
-        # 共用變數宣告
-        arrival_timestamp = dt_timestamp  # 用戶選擇的時間（無論是出發或抵達）
-        
-        # 檢查是否為未來時間
+
         if dt_timestamp <= now_timestamp:
             return {"error": "選擇的時間必須是未來時間，請重新設定"}
-        
+
         url = 'https://maps.googleapis.com/maps/api/distancematrix/json'
         params = {
             'origins': origin,
@@ -53,37 +50,41 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
             'language': 'zh-TW'
         }
 
+        # 處理大眾運輸模式
         if mode == 'transit':
             if time_type == 'arrival':
-                params['arrival_time'] = arrival_timestamp
+                params['arrival_time'] = dt_timestamp
             else:
-                params['departure_time'] = arrival_timestamp
+                params['departure_time'] = dt_timestamp
+
+        # 處理非大眾運輸模式
         else:
+            if mode == 'driving':
+                params['traffic_model'] = 'best_guess'
+
             if time_type == 'arrival':
-                # 反推法計算出發時間
-                guess_departure = arrival_timestamp - 3600  # 初始猜測 1 小時前
-                for _ in range(10):  # 增加迭代次數
+                # 透過反推方式找最佳出發時間
+                arrival_timestamp = dt_timestamp
+                guess_departure = arrival_timestamp - 3600  # 初始猜測為提早1小時
+                for _ in range(10):
                     params['departure_time'] = guess_departure
-                    if mode == 'driving':
-                        params['traffic_model'] = 'best_guess'
-                    
                     response = requests.get(url, params=params).json()
                     element = response['rows'][0]['elements'][0]
-                    
+
                     if 'duration_in_traffic' in element:
                         duration_sec = element['duration_in_traffic']['value']
                     else:
                         duration_sec = element['duration']['value']
-                    
+
                     new_departure = arrival_timestamp - duration_sec
-                    if abs(new_departure - guess_departure) < 30:  # 嚴格收斂條件
+                    if abs(new_departure - guess_departure) < 30:
                         break
                     guess_departure = new_departure
-                
+
                 best_departure_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(guess_departure))
                 duration_text = element['duration']['text']
                 distance_text = element['distance']['text']
-                
+
                 return {
                     "duration_minutes": duration_sec // 60,
                     "duration_text": duration_text,
@@ -92,20 +93,22 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
                     "estimated_arrival_time": datetime_str
                 }
             else:
-                params['departure_time'] = arrival_timestamp
+                # time_type == 'departure'
+                params['departure_time'] = dt_timestamp
 
-        # 執行 API 請求
+        # 正式發送請求
         response = requests.get(url, params=params).json()
 
         if response.get('status') != 'OK':
             return {"error": f"Google API 回傳異常: {response.get('status')}, {response.get('error_message', '')}"}
         if not response.get('rows') or not response['rows'][0].get('elements'):
             return {"error": "Google API 回傳資料異常，請檢查地址是否正確"}
+
         element = response['rows'][0]['elements'][0]
         if element.get('status') != 'OK':
             return {"error": f"路線查詢失敗：{element.get('status')}"}
 
-        # 取得距離資訊
+        # 取得距離與時間
         distance_text = element['distance']['text']
         distance_value = element['distance']['value']
 
@@ -119,17 +122,21 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
         best_departure_time = dt_timestamp if time_type == 'departure' else dt_timestamp - duration_sec
         best_departure_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(best_departure_time))
 
+        estimated_arrival_timestamp = best_departure_time + duration_sec
+        estimated_arrival_str = time.strftime("%Y-%m-%d %H:%M", time.localtime(estimated_arrival_timestamp))
+
         return {
             "duration_minutes": duration_sec // 60,
             "duration_text": duration_text,
             "best_departure_time": best_departure_str,
+            "estimated_arrival_time": estimated_arrival_str,
             "distance_text": distance_text,
             "distance_value": distance_value
         }
+
     except Exception as e:
         logger.exception("通勤計算發生未預期錯誤")
         return {"error": f"系統錯誤：{str(e)}"}
-
 
 # Webhook
 @app.route("/callback", methods=["POST"])
@@ -150,6 +157,7 @@ def handle_message(event):
     text = event.message.text.strip()
     state = user_states.get(user_id, 'start')
     mode_map = {'1': 'transit', '2': 'driving', '3': 'walking', '4': 'bicycling'}
+    user_states.setdefault(user_id, 'start')
 
     if text.lower() in ["設定通勤", "start"]:
         user_states[user_id] = 'awaiting_origin'
@@ -183,65 +191,57 @@ def handle_message(event):
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
-
 @handler.add(PostbackEvent)
 def handle_postback(event):
     user_id = event.source.user_id
     data = event.postback.data
     params = event.postback.params
 
+    now = time.strftime("%Y-%m-%dT%H:%M")
+    max_dt = time.strftime("%Y-%m-%dT%H:%M", time.localtime(time.time() + 60 * 60 * 24 * 30))
+
     if data == "select_departure":
         user_states[user_id] = 'awaiting_datetime'
         user_data[user_id]['time_type'] = 'departure'
-        now = time.strftime("%Y-%m-%dT%H:%M")
-        max_dt = time.strftime("%Y-%m-%dT%H:%M", time.localtime(time.time() + 60*60*24*30))
-        message = TemplateSendMessage(
-            alt_text="選擇出發日期時間",
-            template=ButtonsTemplate(
-                title="選擇出發日期時間",
-                text="請選擇出發日期與時間",
-                actions=[
-                    DatetimePickerAction(
-                        label="出發日期時間",
-                        data="set_datetime",
-                        mode="datetime",
-                        initial=now,
-                        min=now,
-                        max=max_dt
-                    )
-                ]
-            )
+
+        message = TextSendMessage(
+            text="請選擇出發日期與時間：",
+            quick_reply=QuickReply(items=[
+                QuickReplyButton(action=DatetimePickerAction(
+                    label="選擇出發時間",
+                    data="set_datetime",
+                    mode="datetime",
+                    initial=now,
+                    min=now,
+                    max=max_dt
+                ))
+            ])
         )
         line_bot_api.reply_message(event.reply_token, message)
+
     elif data == "select_arrival":
         user_states[user_id] = 'awaiting_datetime'
         user_data[user_id]['time_type'] = 'arrival'
-        now = time.strftime("%Y-%m-%dT%H:%M")
-        max_dt = time.strftime("%Y-%m-%dT%H:%M", time.localtime(time.time() + 60*60*24*30))
-        message = TemplateSendMessage(
-            alt_text="選擇抵達日期時間",
-            template=ButtonsTemplate(
-                title="選擇抵達日期時間",
-                text="請選擇抵達日期與時間",
-                actions=[
-                    DatetimePickerAction(
-                        label="抵達日期時間",
-                        data="set_datetime",
-                        mode="datetime",
-                        initial=now,
-                        min=now,
-                        max=max_dt
-                    )
-                ]
-            )
+
+        message = TextSendMessage(
+            text="請選擇抵達日期與時間：",
+            quick_reply=QuickReply(items=[
+                QuickReplyButton(action=DatetimePickerAction(
+                    label="選擇抵達時間",
+                    data="set_datetime",
+                    mode="datetime",
+                    initial=now,
+                    min=now,
+                    max=max_dt
+                ))
+            ])
         )
         line_bot_api.reply_message(event.reply_token, message)
+
     elif data == "set_datetime":
         dt = params.get("datetime")  # 格式 '2025-06-05T08:30'
         if dt:
             user_data[user_id]['datetime'] = dt.replace("T", " ")
-            # 直接查詢並顯示結果
-            dt_type = "出發" if user_data[user_id]['time_type'] == 'departure' else "抵達"
             dt_val = user_data[user_id]['datetime']
             commute_result = get_commute_info(
                 user_data[user_id]['origin'],
@@ -268,6 +268,40 @@ def handle_postback(event):
                 user_states[user_id] = 'start'
                 user_data.pop(user_id, None)
             else:
+                # 取得兩地經緯度與行政區
+                origin_info = get_city_and_district(user_data[user_id]['origin'])
+                dest_info = get_city_and_district(user_data[user_id]['destination'])
+
+                # 根據時間類型決定查詢時間點
+                if user_data[user_id]['time_type'] == 'departure':
+                    depart_time = dt_val.replace(" ", "T")
+                    arrival_time = commute_result['estimated_arrival_time'].replace(" ", "T")
+                else:
+                    depart_time = commute_result['best_departure_time'].replace(" ", "T")
+                    arrival_time = dt_val.replace(" ", "T")
+
+                # 判斷是否為相同縣市和區域
+                same_location = (
+                    origin_info["city"] == dest_info["city"] and
+                    origin_info["district"] == dest_info["district"]
+                )
+
+                # 查詢天氣：如果地點相同，只查一次
+                if same_location:
+                    weather_info = get_weather(origin_info["city"], origin_info["district"], depart_time)
+                    origin_weather = dest_weather = weather_info
+                else:
+                    origin_weather = get_weather(origin_info["city"], origin_info["district"], depart_time)
+                    dest_weather = get_weather(dest_info["city"], dest_info["district"], arrival_time)
+                
+                if same_location:
+                    weather_section = f"🌤 天氣狀況：\n{origin_weather}"
+                else:
+                    if(user_data[user_id]['time_type'] == 'departure'):
+                        weather_section = f"🌤 出發地天氣：\n{origin_weather}"
+                    else:
+                        weather_section = f"🌤 目的地天氣：\n{dest_weather}"
+
                 if user_data[user_id]['time_type'] == 'departure':
                     reply_msg = f"""✅ 通勤提醒設定完成！
 ━━━━━━━━━━━━━━
@@ -276,10 +310,12 @@ def handle_postback(event):
 🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
 🛣️ 總共里程：{commute_result['distance_text']}
 ⏰ 出發日期時間：{dt_val}
+{weather_section}
 ━━━━━━━━━━━━━━
-📣 根據目前路況：
+📣 根據當時路況：
 🏁 預計抵達時間：{commute_result['estimated_arrival_time']}
-⏱ 預估通勤時間：{commute_result['duration_text']}"""
+⏱ 預估通勤時間：{commute_result['duration_text']}
+{'' if same_location else f'🌤 目的地天氣：\n{dest_weather}'}"""
                 else:
                     reply_msg = f"""✅ 通勤提醒設定完成！
 ━━━━━━━━━━━━━━
@@ -287,20 +323,20 @@ def handle_postback(event):
 🏁 目的地：{user_data[user_id]['destination']}
 🚙 通勤方式：{mode_display[user_data[user_id]['mode']]}
 🛣️ 總共里程：{commute_result['distance_text']}
-⏰ {dt_type}日期時間：{dt_val}
+⏰ 抵達日期時間：{dt_val}
+{weather_section}
 ━━━━━━━━━━━━━━
-📣 根據目前路況：
+📣 根據當時路況：
 🚪 建議出發時間：{commute_result['best_departure_time']}
-⏱ 預估通勤時間：{commute_result['duration_text']}"""
+⏱ 預估通勤時間：{commute_result['duration_text']}
+{'' if same_location else f'🌤 出發地天氣：\n{origin_weather}'}"""
                 user_states[user_id] = 'done'
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
-        else:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="請重新選擇日期時間。")
-            )
+    else:
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請重新選擇日期時間。"))
 
 # 啟動服務
 if __name__ == "__main__":
     logger.info("啟動服務...")
     app.run(debug=True)
+
