@@ -248,7 +248,25 @@ def handle_postback(event):
     now = time.strftime("%Y-%m-%dT%H:%M")
     max_dt = time.strftime("%Y-%m-%dT%H:%M", time.localtime(time.time() + 60 * 60 * 24 * 30))
 
-    if data == "select_departure":
+    if data == "weather_datetime":
+        dt = params.get("datetime")  # 格式 '2025-06-05T08:30'
+        if dt:
+            location = user_data[user_id]['weather_location']
+            dt_val = dt.replace("T", " ")
+            city_district = get_city_and_district(location)
+            weather_info = get_weather(city_district["city"], city_district["district"], dt)
+
+            reply_msg = f"""🌦 天氣查詢結果
+━━━━━━━━━━━━━━
+📍 地點：{location}
+🕒 時間：{dt_val}
+🌤 天氣狀況：
+{weather_info}"""
+            user_states[user_id] = 'start'
+            user_data.pop(user_id, None)
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
+    
+    elif data == "select_departure":
         user_states[user_id] = 'awaiting_datetime'
         user_data[user_id]['time_type'] = 'departure'
 
@@ -287,7 +305,7 @@ def handle_postback(event):
         line_bot_api.reply_message(event.reply_token, message)
 
     elif data == "set_datetime":
-        dt = params.get("datetime")
+        dt = params.get("datetime")  # 格式 '2025-06-05T08:30'
         if dt:
             user_data[user_id]['datetime'] = dt.replace("T", " ")
             dt_val = user_data[user_id]['datetime']
@@ -298,33 +316,12 @@ def handle_postback(event):
                 user_data[user_id]['mode'],
                 user_data[user_id]['time_type']
             )
-            mode_display = {...}
-            # 以下這段請務必放在這裡，不能縮排到其他事件裡面
-            if "error" in commute_result:
-                reply_msg = f"..."
-                user_states[user_id] = 'start'
-                user_data.pop(user_id, None)
-            else:
-                # 組裝正確回覆訊息
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
-
-    elif data == "weather_datetime":
-        dt = params.get("datetime")  # 格式 '2025-06-05T08:30'
-        if dt:
-            location = user_data[user_id]['weather_location']
-            dt_val = dt.replace("T", " ")
-            city_district = get_city_and_district(location)
-            weather_info = get_weather(city_district["city"], city_district["district"], dt)
-
-            reply_msg = f"""🌦 天氣查詢結果
-━━━━━━━━━━━━━━
-📍 地點：{location}
-🕒 時間：{dt_val}
-🌤 天氣狀況：
-{weather_info}"""
-            user_states[user_id] = 'start'
-            user_data.pop(user_id, None)
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
+            mode_display = {
+                'transit': '大眾運輸',
+                'driving': '開車',
+                'walking': '步行',
+                'bicycling': '腳踏車'
+            }
 
             if "error" in commute_result:
                 reply_msg = f"""❌ 設定失敗：{commute_result['error']}
@@ -415,4 +412,5 @@ if __name__ == "__main__":
     line_bot_api.set_default_rich_menu(rich_menu_id)
     logger.info("啟動服務...")
     app.run(debug=True)
+
 
