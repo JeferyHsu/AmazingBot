@@ -357,6 +357,11 @@ def handle_postback(event):
 
 # 啟動服務
 if __name__ == "__main__":
+    # 刪除所有舊 Rich Menu
+    existing_menus = line_bot_api.get_rich_menu_list()
+    for menu in existing_menus:
+        line_bot_api.delete_rich_menu(menu.rich_menu_id)
+        logger.info(f"已刪除舊 Rich Menu: {menu.rich_menu_id}")
     # 建立 Rich Menu
     rich_menu_id = line_bot_api.create_rich_menu(create_rich_menu())
     with open("111.png", 'rb') as f:
