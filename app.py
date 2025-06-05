@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 # 載入環境變數
 load_dotenv()
 
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
-GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+LINE_CHANNEL_ACCESS_TOKEN = os.getnv('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_CHANNEL_SECRET = os.getnv('LINE_CHANNEL_SECRET')
+GOOGLE_API_KEY = os.getnv('GOOGLE_API_KEY')
 
 app = Flask(__name__)
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
@@ -191,6 +191,7 @@ def handle_message(event):
         user_data[user_id]['destination'] = text
         user_states[user_id] = 'awaiting_mode'
         reply = "請選擇通勤方式：\n1. 大眾運輸\n2. 開車\n3. 步行\n4. 腳踏車\n請輸入數字（例如 1）"
+
     elif state == 'awaiting_mode':
         if text not in mode_map:
             reply = "請輸入正確的數字（1~4）"
@@ -206,8 +207,35 @@ def handle_message(event):
             )
             line_bot_api.reply_message(event.reply_token, reply)
             return
+    elif text == "切換到天氣查詢":
+         user_states[user_id] = 'awaiting_weather_location'
+         reply = "請輸入你想查詢天氣的地點"
+
+    elif state == 'awaiting_weather_location':
+        user_data[user_id] = {'weather_location': text}
+        user_states[user_id] = 'awaiting_weather_datetime'
+
+        now = time.strftime("%Y-%m-%dT%H:%M")
+        max_dt = time.strftime("%Y-%m-%dT%H:%M", time.localtime(time.time() + 60 * 60 * 24 * 30))
+
+        message = TextSendMessage(
+            text="請選擇你想查詢的日期與時間：",
+            quick_reply=QuickReply(items=[
+                QuickReplyButton(action=DatetimePickerAction(
+                    label="選擇時間",
+                    data="weather_datetime",
+                    mode="datetime",
+                    initial=now,
+                    min=now,
+                    max=max_dt
+                ))
+            ])
+        )
+        line_bot_api.reply_message(event.reply_token, message)
+        return
+
     else:
-        reply = "請輸入「設定通勤」來開始設定"
+        reply = "請輸入透過選單來開始設定"
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
@@ -276,6 +304,24 @@ def handle_postback(event):
                 'walking': '步行',
                 'bicycling': '腳踏車'
             }
+    elif data == "weather_datetime":
+        dt = params.get("datetime")  # 格式 '2025-06-05T08:30'
+        if dt:
+            location = user_data[user_id]['weather_location']
+            dt_val = dt.replace("T", " ")
+            city_district = get_city_and_district(location)
+            weather_info = get_weather(city_district["city"], city_district["district"], dt)
+
+            reply_msg = f"""🌦 天氣查詢結果
+━━━━━━━━━━━━━━
+📍 地點：{location}
+🕒 時間：{dt_val}
+🌤 天氣狀況：
+{weather_info}"""
+            user_states[user_id] = 'start'
+            user_data.pop(user_id, None)
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
+
             if "error" in commute_result:
                 reply_msg = f"""❌ 設定失敗：{commute_result['error']}
 ━━━━━━━━━━━━━━
@@ -287,6 +333,7 @@ def handle_postback(event):
 請重新輸入「設定通勤」開始設定"""
                 user_states[user_id] = 'start'
                 user_data.pop(user_id, None)
+
             else:
                 # 取得兩地經緯度與行政區
                 origin_info = get_city_and_district(user_data[user_id]['origin'])
@@ -364,3 +411,4 @@ if __name__ == "__main__":
     line_bot_api.set_default_rich_menu(rich_menu_id)
     logger.info("啟動服務...")
     app.run(debug=True)
+
