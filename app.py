@@ -163,6 +163,8 @@ def handle_message(event):
         user_states[user_id] = 'awaiting_origin'
         user_data[user_id] = {}
         reply = "請輸入出發地"
+    elif text == "查詢天氣":
+        user_states[user_id] = 'awaiting_weather_location'
     elif state == 'awaiting_origin':
         user_data[user_id]['origin'] = text
         user_states[user_id] = 'awaiting_destination'
@@ -334,6 +336,46 @@ def handle_postback(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
     else:
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請重新選擇日期時間。"))
+#Rich Menu
+{
+  "size": {
+    "width": 2500,
+    "height": 843
+  },
+  #"selected": false,
+  "name": "TwoButtonsMenu",
+  "chatBarText": "選單",
+  "areas": [
+    {
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1250,
+        "height": 843
+      },
+      "action": {
+        "type": "message",
+        "text": "設定通勤"
+      }
+    },
+    {
+      "bounds": {
+        "x": 1250,
+        "y": 0,
+        "width": 1250,
+        "height": 843
+      },
+      "action": {
+        "type": "message",
+        "text": "查詢天氣"
+      }
+    }
+  ]
+}
+
+
+
+
 
 # 啟動服務
 if __name__ == "__main__":
