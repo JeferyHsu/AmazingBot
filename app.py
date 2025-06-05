@@ -369,7 +369,11 @@ def handle_postback(event):
 
 # 啟動服務
 if __name__ == "__main__":
-    create_rich_menu()
+    rich_menu_id = line_bot_api.create_rich_menu(create_rich_menu())
+    with open("111.png",'rb') as f:
+        line_bot_api.set_rich_menu_image(rich_menu_id, "image/jpeg", f)
+    line_bot_api.set_default_rich_menu(rich_menu_id)
+    
     logger.info("啟動服務...")
     app.run(debug=True)
 
