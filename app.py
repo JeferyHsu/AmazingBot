@@ -50,7 +50,7 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
             'key': GOOGLE_API_KEY,
             'language': 'zh-TW'
         }
-
+        print(f"查詢參數 origins: {origin}, destinations: {destination}")
         # 處理大眾運輸模式
         if mode == 'transit':
             if time_type == 'arrival':
@@ -102,6 +102,7 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
         # 正式發送請求
         response = requests.get(url, params=params).json()
 
+        print(f"API回傳 origin_addresses: {response.get('origin_addresses')}, destination_addresses: {response.get('destination_addresses')}")
         if response.get('status') != 'OK':
             return {"error": f"Google API 回傳異常: {response.get('status')}, {response.get('error_message', '')}"}
         if not response.get('rows') or not response['rows'][0].get('elements'):
