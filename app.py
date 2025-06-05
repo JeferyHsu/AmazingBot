@@ -4,7 +4,8 @@ import logging
 from flask import Flask, request
 from linebot import LineBotApi, WebhookHandler
 from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage, 
+    RichMenu, RichMenuArea, RichMenuBounds, RichMenuSize,
+    PostbackAction, RichMenuSwitchAction, MessageEvent, TextMessage, TextSendMessage, 
     PostbackEvent, QuickReply, QuickReplyButton, PostbackAction,
     TemplateSendMessage, ButtonsTemplate, DatetimePickerAction
 )
@@ -138,6 +139,37 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
         logger.exception("通勤計算發生未預期錯誤")
         return {"error": f"系統錯誤：{str(e)}"}
 
+def create_rich_menu():
+    # 定義兩個區塊
+    areas = [
+        # 第一個按鈕：設定通勤
+        RichMenuArea(
+            bounds=RichMenuBounds(x=0, y=0, width=1250, height=843),
+            action=PostbackAction(label="設定通勤", data="action=set_commute", display_text="設定通勤")
+        ),
+        # 第二個按鈕：切換到天氣查詢
+        RichMenuArea(
+            bounds=RichMenuBounds(x=1250, y=0, width=1250, height=843),
+            action={
+                "type": "richmenuswitch",
+                "richMenuAliasId": "weather_menu",
+                "data": "switch_to_weather"
+            }
+        )
+    ]
+
+    rich_menu = RichMenu(
+        size=RichMenuSize(width=2500, height=843),
+        selected=True,
+        name="主選單",
+        chat_bar_text="功能選單",
+        areas=areas
+    )
+
+    # 建立 rich menu
+    rich_menu_id = line_bot_api.create_rich_menu(rich_menu)
+    print(f"Rich Menu ID: {rich_menu_id}")
+
 # Webhook
 @app.route("/callback", methods=["POST"])
 def callback():
@@ -163,8 +195,6 @@ def handle_message(event):
         user_states[user_id] = 'awaiting_origin'
         user_data[user_id] = {}
         reply = "請輸入出發地"
-    elif text == "查詢天氣":
-        user_states[user_id] = 'awaiting_weather_location'
     elif state == 'awaiting_origin':
         user_data[user_id]['origin'] = text
         user_states[user_id] = 'awaiting_destination'
@@ -336,49 +366,10 @@ def handle_postback(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
     else:
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請重新選擇日期時間。"))
-#Rich Menu
-{
-  "size": {
-    "width": 2500,
-    "height": 843
-  },
-  #"selected": false,
-  "name": "TwoButtonsMenu",
-  "chatBarText": "選單",
-  "areas": [
-    {
-      "bounds": {
-        "x": 0,
-        "y": 0,
-        "width": 1250,
-        "height": 843
-      },
-      "action": {
-        "type": "message",
-        "text": "設定通勤"
-      }
-    },
-    {
-      "bounds": {
-        "x": 1250,
-        "y": 0,
-        "width": 1250,
-        "height": 843
-      },
-      "action": {
-        "type": "message",
-        "text": "查詢天氣"
-      }
-    }
-  ]
-}
-
-
-
-
 
 # 啟動服務
 if __name__ == "__main__":
+    create_rich_menu()
     logger.info("啟動服務...")
     app.run(debug=True)
 
