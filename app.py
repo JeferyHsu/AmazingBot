@@ -138,7 +138,7 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
     except Exception as e:
         logger.exception("通勤計算發生未預期錯誤")
         return {"error": f"系統錯誤：{str(e)}"}
-
+    
 def create_rich_menu():
     rich_menu = RichMenu(
         size=RichMenuSize(width=2500, height=843),
@@ -210,6 +210,7 @@ def handle_message(event):
         reply = "請輸入「設定通勤」來開始設定"
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+
 
 @handler.add(PostbackEvent)
 def handle_postback(event):
