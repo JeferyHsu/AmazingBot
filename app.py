@@ -102,7 +102,8 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
 
         # 正式發送請求
         response = requests.get(url, params=params).json()
-
+        logger.info(f"API回傳 origin_addresses: {response.get('origin_addresses')}, destination_addresses: {response.get('destination_addresses')}")
+        
         if response.get('status') != 'OK':
             return {"error": f"Google API 回傳異常: {response.get('status')}, {response.get('error_message', '')}"}
         if not response.get('rows') or not response['rows'][0].get('elements'):
@@ -312,6 +313,15 @@ def handle_postback(event):
         if dt:
             user_data[user_id]['datetime'] = dt.replace("T", " ")
             dt_val = user_data[user_id]['datetime']
+            # 新增 log
+            logger.info(f"用戶輸入 origins: {user_data[user_id]['origin']}, destinations: {user_data[user_id]['destination']}")
+            commute_result = get_commute_info(
+                user_data[user_id]['origin'],
+                user_data[user_id]['destination'],
+                dt_val,
+                user_data[user_id]['mode'],
+                user_data[user_id]['time_type']
+        )
             commute_result = get_commute_info(
                 user_data[user_id]['origin'],
                 user_data[user_id]['destination'],
@@ -415,3 +425,5 @@ if __name__ == "__main__":
     line_bot_api.set_default_rich_menu(rich_menu_id)
     logger.info("啟動服務...")
     app.run(debug=True)
+
+
