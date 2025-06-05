@@ -287,7 +287,7 @@ def handle_postback(event):
         line_bot_api.reply_message(event.reply_token, message)
 
     elif data == "set_datetime":
-        dt = params.get("datetime")  # 格式 '2025-06-05T08:30'
+        dt = params.get("datetime")
         if dt:
             user_data[user_id]['datetime'] = dt.replace("T", " ")
             dt_val = user_data[user_id]['datetime']
@@ -298,12 +298,16 @@ def handle_postback(event):
                 user_data[user_id]['mode'],
                 user_data[user_id]['time_type']
             )
-            mode_display = {
-                'transit': '大眾運輸',
-                'driving': '開車',
-                'walking': '步行',
-                'bicycling': '腳踏車'
-            }
+            mode_display = {...}
+            # 以下這段請務必放在這裡，不能縮排到其他事件裡面
+            if "error" in commute_result:
+                reply_msg = f"..."
+                user_states[user_id] = 'start'
+                user_data.pop(user_id, None)
+            else:
+                # 組裝正確回覆訊息
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
+
     elif data == "weather_datetime":
         dt = params.get("datetime")  # 格式 '2025-06-05T08:30'
         if dt:
