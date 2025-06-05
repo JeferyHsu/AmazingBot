@@ -150,7 +150,7 @@ def get_weather(city, district, time):
         return f"天氣資料錯誤：{e}"
 
 # 測試程式區
-if __name__ == "__main__":
+#if __name__ == "__main__":
     place = "板橋火車站"
     info = get_city_and_district(place)
 
