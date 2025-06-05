@@ -4,9 +4,10 @@ import logging
 from flask import Flask, request
 from linebot import LineBotApi, WebhookHandler
 from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage, 
+    RichMenu, RichMenuArea, RichMenuBounds, RichMenuSize,
+    PostbackAction, RichMenuSwitchAction, MessageEvent, TextMessage, TextSendMessage, 
     PostbackEvent, QuickReply, QuickReplyButton, PostbackAction,
-    TemplateSendMessage, ButtonsTemplate, DatetimePickerAction
+    MessageAction, TemplateSendMessage, ButtonsTemplate, DatetimePickerAction
 )
 from dotenv import load_dotenv
 import requests
@@ -137,6 +138,25 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
     except Exception as e:
         logger.exception("通勤計算發生未預期錯誤")
         return {"error": f"系統錯誤：{str(e)}"}
+
+def create_rich_menu():
+    rich_menu = RichMenu(
+        size=RichMenuSize(width=2500, height=843),
+        selected=True,
+        name="功能選單",
+        chat_bar_text="點擊開啟選單",
+        areas=[
+            RichMenuArea(
+                bounds=RichMenuBounds(x=0, y=0, width=1250, height=843),
+                action=MessageAction(label='切換到天氣查詢', text='切換到天氣查詢')
+            ),
+            RichMenuArea(
+                bounds=RichMenuBounds(x=1250, y=0, width=1250, height=843),
+                action=MessageAction(label='設定通勤', text='設定通勤')
+            )
+        ]
+    )
+    return rich_menu
 
 # Webhook
 @app.route("/callback", methods=["POST"])
@@ -337,5 +357,10 @@ def handle_postback(event):
 
 # 啟動服務
 if __name__ == "__main__":
+    # 建立 Rich Menu
+    rich_menu_id = line_bot_api.create_rich_menu(create_rich_menu())
+    with open("111.png", 'rb') as f:
+        line_bot_api.set_rich_menu_image(rich_menu_id, "image/jpeg", f)
+    line_bot_api.set_default_rich_menu(rich_menu_id)
     logger.info("啟動服務...")
     app.run(debug=True)
