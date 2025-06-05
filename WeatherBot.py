@@ -5,7 +5,8 @@ from datetime import datetime
 import json
 
 # 載入 .env 中的 API 金鑰
-CWB_API_KEY = 'CWB_API_KEY'
+load_dotenv()
+CWB_API_KEY = os.getenv('CWB_API_KEY')
 
 # 取得縣市與區（鄉鎮）
 def get_city_and_district(place_name):
