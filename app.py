@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 # 載入環境變數
 load_dotenv()
 
-LINE_CHANNEL_ACCESS_TOKEN = 'LINE_CHANNEL_ACCESS_TOKEN'
-LINE_CHANNEL_SECRET = 'LINE_CHANNEL_SECRET'
-GOOGLE_API_KEY = 'GOOGLE_API_KEY'
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
 app = Flask(__name__)
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
@@ -293,6 +293,7 @@ def handle_postback(event):
                 else:
                     origin_weather = get_weather(origin_info["city"], origin_info["district"], depart_time)
                     dest_weather = get_weather(dest_info["city"], dest_info["district"], arrival_time)
+                
                 if same_location:
                     weather_section = f"🌤 天氣狀況：\n{origin_weather}"
                 else:
