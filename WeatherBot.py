@@ -5,7 +5,6 @@ from datetime import datetime
 import json
 
 # 載入 .env 中的 API 金鑰
-load_dotenv()
 CWB_API_KEY = os.getenv('CWB_API_KEY')
 
 # 取得縣市與區（鄉鎮）
@@ -151,8 +150,8 @@ def get_weather(city, district, time):
         return f"天氣資料錯誤：{e}"
 
 # 測試程式區
-#if __name__ == "__main__":
-    place = "高鐵左營站"
+if __name__ == "__main__":
+    place = "板橋火車站"
     info = get_city_and_district(place)
 
     print("\n🔍 地址解析結果：")
