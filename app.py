@@ -293,7 +293,6 @@ def handle_postback(event):
                 else:
                     origin_weather = get_weather(origin_info["city"], origin_info["district"], depart_time)
                     dest_weather = get_weather(dest_info["city"], dest_info["district"], arrival_time)
-                
                 if same_location:
                     weather_section = f"🌤 天氣狀況：\n{origin_weather}"
                 else:
