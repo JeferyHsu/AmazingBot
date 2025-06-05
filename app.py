@@ -66,7 +66,7 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
             if time_type == 'arrival':
                 # 透過反推方式找最佳出發時間
                 arrival_timestamp = dt_timestamp
-                guess_departure = arrival_timestamp - 3600  # 初始猜測為提早1小時
+                guess_departure = arrival_timestamp - 300  # 初始猜測為提早1小時
                 for _ in range(10):
                     params['departure_time'] = guess_departure
                     response = requests.get(url, params=params).json()
