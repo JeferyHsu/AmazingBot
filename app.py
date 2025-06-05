@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 # 載入環境變數
 load_dotenv()
 
-LINE_CHANNEL_ACCESS_TOKEN = os.getnv('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.getnv('LINE_CHANNEL_SECRET')
-GOOGLE_API_KEY = os.getnv('GOOGLE_API_KEY')
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
 app = Flask(__name__)
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
