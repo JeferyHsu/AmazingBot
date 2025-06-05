@@ -62,7 +62,8 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
         else:
             if mode == 'driving':
                 params['traffic_model'] = 'best_guess'
-
+            duration_text = element['duration']['text']
+            distance_text = element['distance']['text']
             if time_type == 'arrival':
                 # 透過反推方式找最佳出發時間
                 arrival_timestamp = dt_timestamp
