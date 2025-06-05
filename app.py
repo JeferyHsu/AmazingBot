@@ -62,12 +62,11 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
         else:
             if mode == 'driving':
                 params['traffic_model'] = 'best_guess'
-            duration_text = element['duration']['text']
-            distance_text = element['distance']['text']
+
             if time_type == 'arrival':
                 # 透過反推方式找最佳出發時間
                 arrival_timestamp = dt_timestamp
-                guess_departure = arrival_timestamp - 300  # 初始猜測為提早1小時
+                guess_departure = arrival_timestamp - 3600  # 初始猜測為提早1小時
                 for _ in range(10):
                     params['departure_time'] = guess_departure
                     response = requests.get(url, params=params).json()
@@ -75,8 +74,10 @@ def get_commute_info(origin, destination, datetime_str, mode, time_type):
 
                     if 'duration_in_traffic' in element:
                         duration_sec = element['duration_in_traffic']['value']
+                        duration_text = element['duration_in_traffic']['text']
                     else:
                         duration_sec = element['duration']['value']
+                        duration_text = element['duration']['text']
 
                     new_departure = arrival_timestamp - duration_sec
                     if abs(new_departure - guess_departure) < 30:
@@ -413,5 +414,3 @@ if __name__ == "__main__":
     line_bot_api.set_default_rich_menu(rich_menu_id)
     logger.info("啟動服務...")
     app.run(debug=True)
-
-
