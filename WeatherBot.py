@@ -52,7 +52,7 @@ def get_city_and_district(place_name):
         return {"city": "未知縣市", "district": "未知鄉鎮區", "error": str(e)}
 
 # 查詢天氣（目前只支援桃園市）
-def get_weather(city, district, time, more):
+def get_weather(city, district, time, more=True):
     try:
         if city == "桃園市":
             url = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-007?Authorization={CWB_API_KEY}&locationName={district}"
