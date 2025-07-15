@@ -4,7 +4,6 @@ import os
 from datetime import datetime
 import json
 
-# 載入 .env 中的 API 金鑰
 CWB_API_KEY = os.getenv('CWB_API_KEY')
 
 # 取得縣市與區（鄉鎮）
@@ -53,7 +52,7 @@ def get_city_and_district(place_name):
         return {"city": "未知縣市", "district": "未知鄉鎮區", "error": str(e)}
 
 # 查詢天氣（目前只支援桃園市）
-def get_weather(city, district, time):
+def get_weather(city, district, time, more):
     try:
         if city == "桃園市":
             url = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-007?Authorization={CWB_API_KEY}&locationName={district}"
@@ -107,7 +106,12 @@ def get_weather(city, district, time):
         weather_text = None
         min_temp = None
         max_temp = None
+        uv_index = None
+        uv_level = None
+        min_Apparent_temp = None
+        max_Apparent_temp = None
         pop_text = "天數過多無法預測"
+        uv_text = "查詢時間為晚間，無提供紫外線資料"
 
         for location in data["records"]["Locations"]:
             for loc in location["Location"]:
@@ -130,11 +134,26 @@ def get_weather(city, district, time):
                         elif element["ElementName"] == "最高溫度" and not max_temp:
                             max_temp = entry["ElementValue"][0].get("MaxTemperature")
 
+                        # 最低體感溫度
+                        elif element["ElementName"] == "最低體感溫度" and not min_Apparent_temp:
+                            min_Apparent_temp = entry["ElementValue"][0].get("MinApparentTemperature")
+
+                        # 最高體感溫度
+                        elif element["ElementName"] == "最高體感溫度" and not max_Apparent_temp:
+                            max_Apparent_temp = entry["ElementValue"][0].get("MaxApparentTemperature")
+
                         # 降雨機率
                         elif element["ElementName"] == "12小時降雨機率":
                             value = entry["ElementValue"][0].get("ProbabilityOfPrecipitation")
                             if value and value != "-":
                                 pop_text = f"降雨機率：{value}%"
+                        # 紫外線指數與等級
+                        elif element["ElementName"] == "紫外線指數" :
+                            uv_data = entry["ElementValue"][0]
+                            uv_index = uv_data.get("UVIndex")
+                            uv_level = uv_data.get("UVExposureLevel")
+                            if uv_index and uv_level != None:
+                                uv_text = f"紫外線指數：{uv_index}，等級：{uv_level}"
 
         result_parts = []
         if weather_text:
@@ -143,20 +162,27 @@ def get_weather(city, district, time):
             result_parts.append(f"氣溫範圍攝氏 {min_temp}~{max_temp} 度")
         if pop_text:
             result_parts.append(pop_text)
+        if(more == True):
+            if min_Apparent_temp and max_Apparent_temp:
+                result_parts.append(f"體感溫度範圍攝氏 {min_Apparent_temp}~{max_Apparent_temp} 度")
+            
+            result_parts.append(uv_text)
 
         return "\n".join(result_parts) if result_parts else "查無該時間的天氣資料"
 
     except Exception as e:
         return f"天氣資料錯誤：{e}"
 
+
 # 測試程式區
 #if __name__ == "__main__":
-    place = "板橋火車站"
+    place = "桃園高鐵站"
     info = get_city_and_district(place)
 
     print("\n🔍 地址解析結果：")
     print(info)
-    time= "2025-06-06T20:00:00"  # 使用 ISO 8601 格式的時間字串
-    weather = get_weather(info["city"], info["district"],time)
+    time= "2025-06-07T14:00:00"  # 使用 ISO 8601 格式的時間字串
+    weather = get_weather(info["city"], info["district"],time,True)
     print(f"\n📍 {info['city']} {info['district']} 的天氣：")
     print(weather)
+
